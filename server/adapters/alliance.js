@@ -25,23 +25,50 @@ async function lookup(nric, policyNumber) {
 
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
+  const log = (...args) => console.log('[alliance]', ...args);
 
   try {
+    log('navigating to', cred.url);
     await page.goto(cred.url, { waitUntil: 'networkidle' });
 
-    await page.getByPlaceholder(/S1234567D/i).fill(nric);
-    await page.getByPlaceholder(/AIA-P-889201/i).fill(policyNumber);
+    const nricField = page.getByPlaceholder(/S1234567D/i);
+    const policyField = page.getByPlaceholder(/AIA-P-889201/i);
+
+    // This app briefly resets its form fields while it finishes hydrating
+    // right after load — a fill() that lands during that window gets
+    // silently wiped. Confirm each field actually holds what we typed
+    // before submitting, retrying with backoff if not.
+    await fillAndVerify(nricField, nric, log, 'nric');
+    await fillAndVerify(policyField, policyNumber, log, 'policy');
+
+    log('clicking Check eligibility');
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
     const found = await page
       .getByText('SUM INSURED')
-      .waitFor({ timeout: 6000 })
+      .waitFor({ timeout: 15000 })
       .then(() => true)
       .catch(() => false);
 
     if (!found) {
+      // Capture what the page actually shows so this is diagnosable
+      // without needing separate access to Render's log viewer.
+      const [nricVal, policyVal] = await Promise.all([
+        nricField.inputValue().catch(() => '(unreadable)'),
+        policyField.inputValue().catch(() => '(unreadable)'),
+      ]);
+      const pageSnapshot = await page.locator('main').innerText().catch(() => '(could not read page)');
+      log('SUM INSURED never appeared. Field values at timeout:', { nricVal, policyVal });
+      log('Page snapshot at timeout:\n', pageSnapshot);
       await browser.close();
-      return { status: 'not_found', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url } };
+      return {
+        status: 'not_found',
+        insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url },
+        debug: {
+          fieldsAtTimeout: { nric: nricVal, policyNumber: policyVal },
+          pageTextAtTimeout: pageSnapshot.slice(0, 600),
+        },
+      };
     }
 
     const text = await page.locator('main').innerText();
@@ -49,7 +76,12 @@ async function lookup(nric, policyNumber) {
     await browser.close();
 
     if (policyNumber && result.policy.number && result.policy.number.toUpperCase() !== policyNumber.toUpperCase()) {
-      return { status: 'not_found', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url } };
+      log('scanned policy number', result.policy.number, 'does not match entered', policyNumber);
+      return {
+        status: 'not_found',
+        insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url },
+        debug: { scannedPolicyNumber: result.policy.number, enteredPolicyNumber: policyNumber },
+      };
     }
     return result;
 
@@ -57,6 +89,21 @@ async function lookup(nric, policyNumber) {
     await browser.close();
     return { status: 'error', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url }, message: err.message };
   }
+}
+
+/** Fills a field, confirming it stuck; retries with backoff since this app's
+ * own hydration can wipe a fill() that lands too early. Logs each attempt
+ * so the Render log viewer shows exactly what happened. */
+async function fillAndVerify(locator, value, log, label) {
+  const delays = [0, 500, 1000, 2000];
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i]) await locator.page().waitForTimeout(delays[i]);
+    await locator.fill(value);
+    const actual = await locator.inputValue();
+    log(`fill "${label}" attempt ${i + 1}: wrote "${value}", field now reads "${actual}"`);
+    if (actual === value) return;
+  }
+  throw new Error(`Could not get the "${label}" field to hold "${value}" after ${delays.length} attempts — the portal kept resetting it.`);
 }
 
 function parseResultText(text, nric, portalUrl) {

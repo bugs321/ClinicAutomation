@@ -38,9 +38,14 @@ async function lookup(nric, policyNumber, patientName) {
   try {
     await page.goto(cred.url, { waitUntil: 'networkidle' });
 
-    await page.getByLabel(/policy number/i).fill(policyNumber);
-    await page.getByLabel(/nric.*fin/i).fill(nric);
-    await page.getByLabel(/patient full name/i).fill(patientName);
+    // These Lovable-built demo apps briefly reset their form fields while
+    // finishing client-side hydration right after load — a fill() that
+    // lands during that window gets silently wiped. Confirm each field
+    // actually holds what we typed before submitting, retrying once after
+    // a short wait if not.
+    await fillAndVerify(page.getByLabel(/policy number/i), policyNumber);
+    await fillAndVerify(page.getByLabel(/nric.*fin/i), nric);
+    await fillAndVerify(page.getByLabel(/patient full name/i), patientName);
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
     const found = await page
@@ -62,6 +67,18 @@ async function lookup(nric, policyNumber, patientName) {
   } catch (err) {
     await browser.close();
     return { status: 'error', insurer: { code: 'mhc', name: 'MHC', portalUrl: cred.url }, message: err.message };
+  }
+}
+
+/** Fills a field, then confirms it stuck; retries once after a beat if the app's own hydration wiped it. */
+async function fillAndVerify(locator, value) {
+  await locator.fill(value);
+  if ((await locator.inputValue()) === value) return;
+
+  await locator.page().waitForTimeout(700);
+  await locator.fill(value);
+  if ((await locator.inputValue()) !== value) {
+    throw new Error('Could not get the portal form to hold the entered value — it kept resetting the field.');
   }
 }
 

@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: clinic-eligibility-desk
-    env: docker
-    dockerfilePath: ./Dockerfile
-    plan: free

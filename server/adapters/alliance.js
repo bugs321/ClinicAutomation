@@ -3,12 +3,13 @@
  *
  * Target: the URL configured for "alliance" in Credconfig.xml (demo:
  * https://test-ins-app.lovable.app/ — "AIA Clinic Eligibility Portal").
- * Unlike MHC's portal, this one is a single-field lookup: NRIC/FIN only,
- * no login, no policy number field. The clinic's policy-number input is
- * still collected (it's a required field in the intake form) and is used
- * here only to cross-check against the policy number the portal returns —
- * if they don't match, that's surfaced as a "not_found" rather than
- * silently showing someone else's policy.
+ * No login. The portal requires BOTH NRIC/FIN and policy number to be
+ * filled — submitting with either blank is blocked by its own client-side
+ * validation, so both fields get filled here before clicking submit.
+ * As a second safety net, the policy number the portal returns is also
+ * cross-checked against what was entered — if they don't match, that's
+ * surfaced as "not_found" rather than silently showing someone else's
+ * policy.
  *
  * Requires: npm i playwright   (then: npx playwright install chromium)
  */
@@ -29,6 +30,7 @@ async function lookup(nric, policyNumber) {
     await page.goto(cred.url, { waitUntil: 'networkidle' });
 
     await page.getByPlaceholder(/S1234567D/i).fill(nric);
+    await page.getByPlaceholder(/AIA-P-889201/i).fill(policyNumber);
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
     const found = await page

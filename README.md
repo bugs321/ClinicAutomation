@@ -87,10 +87,13 @@ results card never change — you only ever add a new file under
 
 ## Running the live scan locally
 
+`package.json` and `package-lock.json` are already committed, listing
+every dependency this needs (`express`, `playwright`, plus their full
+transitive tree) — no need to `npm init` or hand-install packages.
+
 ```bash
-npm init -y
-npm i express playwright
-npx playwright install chromium
+npm ci                              # installs the exact versions from package-lock.json
+npx playwright install chromium     # downloads the Chromium binary Playwright drives
 node server/index.js
 ```
 
@@ -112,31 +115,50 @@ so `fetch('/api/eligibility')` reaches it on the same origin).
 Render auto-detects a folder with `index.html` at the root as a **static
 site** if there's no `package.json` — which means no Node process runs at
 all, `/api/eligibility` doesn't exist, and the front-end fails with
-"Could not reach the eligibility server." `package.json`, `Dockerfile`,
-and `render.yaml` in this repo fix that: Render will deploy it as a proper
-Docker **web service** instead.
+"Could not reach the eligibility server." The `package.json` and
+`package-lock.json` in this repo fix that: Render will deploy it as a
+Node **web service** instead, installing every dependency (`express`,
+`playwright`, and their full transitive tree) from the lockfile.
 
-Playwright needs Chromium plus several system libraries. Render's native
-Node buildpack can't `apt-get install` those (no root during build), so
-this repo deploys via Docker using Playwright's official base image
-(`mcr.microsoft.com/playwright`), which ships Chromium pre-installed.
+Playwright's Chromium binary also needs to be downloaded and land
+somewhere that survives into the running service — Render's native Node
+build has no root access, so anything requiring `apt-get` (like
+`playwright install --with-deps`) fails there. This repo's
+`postinstall` script runs the deps-free `playwright install chromium`
+instead, and the setup below points the download at a location inside
+`node_modules` so it's guaranteed to be part of what Render deploys.
 
 Steps:
 
-1. Push this repo to GitHub (including `Dockerfile`, `render.yaml`,
-   `package.json` — **not** `Credconfig.xml`, see below).
-2. In Render: **New → Web Service** → connect the repo. Render should
-   read `render.yaml` and pick the Docker environment automatically; if
-   it offers a Node/native environment instead, switch the environment to
-   **Docker** manually.
-3. `Credconfig.xml` is gitignored (it holds plaintext credentials), so it
-   won't be in the deployed image unless you add it. In the Render
-   dashboard: **Environment → Secret Files** → add a file with path
+1. Push this repo to GitHub, including `package.json` and
+   `package-lock.json` — **not** `Credconfig.xml` (it's gitignored, see
+   below).
+2. In Render: **New → Web Service** → connect the repo, environment
+   **Node**.
+   - Build command: `npm ci`
+   - Start command: `npm start`
+3. **Environment → Environment Variables** → add
+   `PLAYWRIGHT_BROWSERS_PATH` = `0`. This tells Playwright to install
+   Chromium inside `node_modules/playwright-core/.local-browsers` rather
+   than an OS-level cache folder outside the project — the browser then
+   travels with `node_modules` into the deployed instance instead of
+   silently vanishing between build and runtime.
+4. **Environment → Secret Files** → add a file with path
    `Credconfig.xml` and paste its contents. Render mounts it into the
-   container at deploy time without it ever touching git history.
-4. Deploy. Check the Render logs for `Eligibility API + site listening on
+   service at deploy time without it ever touching git history.
+5. Deploy. Check the Render logs for `Eligibility API + site listening on
    http://localhost:<port>` — if that line isn't there, the fetch will
    keep failing regardless of what the front-end does.
+
+If Chromium still fails to *launch* at runtime (as opposed to failing to
+*install* at build time) with an error about missing shared libraries —
+things like `libnss3.so` — that means Render's base Node image is missing
+a system library `--with-deps` would normally have installed, and there's
+no root access to add it manually. At that point the two options are
+asking on Render's community forum for the current library list on their
+Node image, or switching this service to a Docker environment using
+Playwright's official base image (which ships every required library
+pre-installed) — ask if you want that Dockerfile regenerated.
 
 ## Security note on Credconfig.xml
 

@@ -29,8 +29,16 @@ async function lookup(nric, policyNumber) {
   try {
     await page.goto(cred.url, { waitUntil: 'networkidle' });
 
-    await page.getByPlaceholder(/S1234567D/i).fill(nric);
-    await page.getByPlaceholder(/AIA-P-889201/i).fill(policyNumber);
+    const nricField = page.getByPlaceholder(/S1234567D/i);
+    const policyField = page.getByPlaceholder(/AIA-P-889201/i);
+
+    // This app briefly resets its form fields while it finishes hydrating
+    // right after load — a fill() that lands during that window gets
+    // silently wiped. Confirm each field actually holds what we typed
+    // before submitting, retrying once after a short wait if not.
+    await fillAndVerify(nricField, nric);
+    await fillAndVerify(policyField, policyNumber);
+
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
     const found = await page
@@ -56,6 +64,18 @@ async function lookup(nric, policyNumber) {
   } catch (err) {
     await browser.close();
     return { status: 'error', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url }, message: err.message };
+  }
+}
+
+/** Fills a field, then confirms it stuck; retries once after a beat if the app's own hydration wiped it. */
+async function fillAndVerify(locator, value) {
+  await locator.fill(value);
+  if ((await locator.inputValue()) === value) return;
+
+  await locator.page().waitForTimeout(700);
+  await locator.fill(value);
+  if ((await locator.inputValue()) !== value) {
+    throw new Error('Could not get the portal form to hold the entered value — it kept resetting the field.');
   }
 }
 

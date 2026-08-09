@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raffles Singapore Health Clinic — Insurance Eligibility Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14211E;
+    --paper:#F6F5F1;
+    --panel:#FFFFFF;
+    --teal-deep:#1F4B44;
+    --teal-mid:#3E7C6F;
+    --sage:#8FB79D;
+    --amber:#C97A2B;
+    --line:#DDD9CD;
+    --line-soft:#EAE7DC;
+    --danger:#A6432F;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:20px 40px;border-bottom:1px solid var(--line);
+    background:var(--panel);
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{
+    width:38px;height:38px;border-radius:9px;
+    background:var(--teal-deep);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-family:'Fraunces',serif;font-weight:600;font-size:18px;
+  }
+  .brand-name{font-family:'Fraunces',serif;font-weight:600;font-size:19px;letter-spacing:.2px;}
+  .brand-sub{font-size:12px;color:var(--teal-mid);letter-spacing:.4px;text-transform:uppercase;margin-top:1px;}
+  .staff-tag{
+    font-size:12px;color:#6b7570;border:1px solid var(--line);
+    padding:6px 12px;border-radius:20px;background:var(--paper);
+  }
+
+  main{max-width:1180px;margin:0 auto;padding:48px 40px 80px;}
+  .hero{margin-bottom:40px;max-width:640px;}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--teal-mid);
+    letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;
+  }
+  h1{
+    font-family:'Fraunces',serif;font-weight:500;font-size:38px;line-height:1.15;
+    margin:0 0 14px;color:var(--ink);
+  }
+  .hero p{font-size:15.5px;line-height:1.6;color:#4b544f;margin:0;}
+
+  .grid{display:grid;grid-template-columns:380px 1fr;gap:32px;align-items:start;}
+  @media (max-width:880px){.grid{grid-template-columns:1fr;}}
+
+  /* Intake panel */
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:28px;position:sticky;top:28px;
+  }
+  .panel h2{font-family:'Fraunces',serif;font-weight:500;font-size:19px;margin:0 0 4px;}
+  .panel .hint{font-size:13px;color:#767f7a;margin:0 0 22px;line-height:1.5;}
+
+  label{display:block;font-size:12.5px;font-weight:600;color:var(--teal-deep);margin-bottom:7px;letter-spacing:.2px;}
+  .field{margin-bottom:20px;}
+  input[type=text], select{
+    width:100%;padding:12px 13px;border:1.5px solid var(--line);border-radius:9px;
+    font-family:'IBM Plex Mono',monospace;font-size:14.5px;background:#FCFBF9;color:var(--ink);
+    transition:border-color .15s;
+  }
+  select{font-family:'Inter',sans-serif;cursor:pointer;}
+  input[type=text]:focus, select:focus{
+    outline:none;border-color:var(--teal-mid);box-shadow:0 0 0 3px rgba(62,124,111,.15);
+  }
+  .field-error{font-size:12px;color:var(--danger);margin-top:6px;display:none;}
+  .field.invalid input{border-color:var(--danger);}
+  .field.invalid .field-error{display:block;}
+
+  .helper-row{font-size:11.5px;color:#8a9089;margin-top:7px;font-family:'IBM Plex Mono',monospace;}
+
+  button.primary{
+    width:100%;padding:13px;border:none;border-radius:9px;
+    background:var(--teal-deep);color:#fff;font-size:14.5px;font-weight:600;
+    cursor:pointer;transition:background .15s;margin-top:6px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  button.primary:hover{background:#173a34;}
+  button.primary:disabled{background:#a8b3ae;cursor:wait;}
+
+  .consent{font-size:11.5px;color:#8a9089;line-height:1.5;margin-top:16px;border-top:1px dashed var(--line);padding-top:14px;}
+
+  /* Results side */
+  .results-empty{
+    border:1.5px dashed var(--line);border-radius:var(--radius);
+    padding:60px 30px;text-align:center;color:#8a9089;
+  }
+  .results-empty svg{margin-bottom:14px;opacity:.5;}
+  .results-empty p{font-size:14px;margin:0;line-height:1.6;}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .card-head{
+    background:var(--teal-deep);color:#fff;padding:22px 26px;
+    display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+  }
+  .card-head .who .pname{font-family:'Fraunces',serif;font-weight:500;font-size:21px;}
+  .card-head .who .pmeta{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.8;margin-top:4px;}
+  .status-pill{
+    font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
+    background:rgba(255,255,255,.15);padding:5px 11px;border-radius:20px;white-space:nowrap;
+  }
+  .status-pill.active{background:var(--sage);color:#0d2b21;}
+
+  .card-body{padding:26px;}
+  .policy-line{
+    display:flex;flex-wrap:wrap;gap:22px;font-size:12.5px;color:#5a635e;
+    padding-bottom:20px;margin-bottom:22px;border-bottom:1px solid var(--line-soft);
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .policy-line span b{display:block;color:var(--ink);font-size:13.5px;margin-top:2px;font-weight:600;}
+
+  .section-label{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--teal-mid);margin:0 0 12px;
+  }
+
+  .coverage-figures{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+  .fig{background:#FBFAF7;border:1px solid var(--line-soft);border-radius:10px;padding:15px 16px;}
+  .fig .figlabel{font-size:11.5px;color:#767f7a;margin-bottom:6px;}
+  .fig .figval{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:var(--ink);}
+  .fig.balance .figval{color:var(--teal-deep);}
+
+  .util-bar-wrap{margin-bottom:30px;}
+  .util-bar-top{display:flex;justify-content:space-between;font-size:11.5px;color:#767f7a;margin-bottom:8px;font-family:'IBM Plex Mono',monospace;}
+  .util-bar{height:10px;border-radius:6px;background:#EAE7DC;overflow:hidden;position:relative;}
+  .util-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal-mid),var(--teal-deep));border-radius:6px;}
+
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  @media (max-width:600px){.two-col{grid-template-columns:1fr;}}
+
+  .kv-list{list-style:none;margin:0;padding:0;}
+  .kv-list li{
+    display:flex;justify-content:space-between;gap:14px;padding:10px 0;
+    border-bottom:1px solid var(--line-soft);font-size:13.5px;
+  }
+  .kv-list li:last-child{border-bottom:none;}
+  .kv-list li span:first-child{color:#5a635e;}
+  .kv-list li span:last-child{font-family:'IBM Plex Mono',monospace;font-weight:600;text-align:right;}
+
+  .excl-list{list-style:none;margin:0;padding:0;}
+  .excl-list li{
+    font-size:13.5px;color:#4b544f;padding:9px 0 9px 20px;position:relative;
+    border-bottom:1px solid var(--line-soft);
+  }
+  .excl-list li:last-child{border-bottom:none;}
+  .excl-list li::before{
+    content:"×";position:absolute;left:0;top:8px;color:var(--danger);font-weight:700;
+  }
+
+  .card-foot{
+    background:#FBFAF7;border-top:1px dashed var(--line);
+    padding:14px 26px;display:flex;justify-content:space-between;align-items:center;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8a9089;flex-wrap:wrap;gap:8px;
+  }
+  .card-foot a{color:var(--teal-mid);text-decoration:none;}
+
+  .not-found{
+    border:1px solid var(--line);border-radius:var(--radius);padding:32px;background:var(--panel);
+  }
+  .not-found .section-label{color:var(--danger);}
+  .not-found p{font-size:14px;color:#4b544f;line-height:1.6;margin:0 0 4px;}
+
+  .spinner{
+    width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+    border-radius:50%;animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  footer{
+    text-align:center;padding:28px 20px;font-size:11.5px;color:#9aa39d;
+    font-family:'IBM Plex Mono',monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">R</div>
+    <div>
+      <div class="brand-name">Raffles Singapore Health Clinic</div>
+      <div class="brand-sub">Insurance Eligibility Desk</div>
+    </div>
+  </div>
+  <div class="staff-tag">Front-desk · Staff use only</div>
+</div>
+
+<main>
+  <div class="hero">
+    <div class="eyebrow">Patient intake · Step 1 of 1</div>
+    <h1>Check a patient's coverage before the consult</h1>
+    <p>Enter the patient's Singapore NRIC/FIN and select their insurance provider. We'll pull the sum insured, remaining balance, co-payment terms and exclusions from the provider's portal into one standard summary.</p>
+  </div>
+
+  <div class="grid">
+    <!-- Intake form -->
+    <div class="panel">
+      <h2>Patient details</h2>
+      <p class="hint">Data is used only to check policy eligibility for this visit and is not stored after the session ends.</p>
+
+      <form id="intakeForm" novalidate>
+        <div class="field" id="nricField">
+          <label for="nric">Patient NRIC / FIN</label>
+          <input type="text" id="nric" placeholder="e.g. S1234567D" maxlength="9" autocomplete="off">
+          <div class="field-error">Enter a valid NRIC/FIN — 1 letter, 7 digits, 1 letter (e.g. S1234567D).</div>
+        </div>
+
+        <div class="field" id="insurerField">
+          <label for="insurer">Insurance provider</label>
+          <select id="insurer">
+            <option value="">Select provider…</option>
+            <option value="aia">AIA — HealthShield Gold Max</option>
+            <option value="greateastern">Great Eastern — GREAT SupremeHealth</option>
+            <option value="prudential">Prudential — PRUShield</option>
+            <option value="ntuc">NTUC Income — IncomeShield</option>
+          </select>
+          <div class="helper-row" id="providerHint">Each provider connects to its own eligibility portal.</div>
+        </div>
+
+        <button type="submit" class="primary" id="submitBtn">
+          <span id="btnLabel">Check eligibility</span>
+        </button>
+
+        <div class="consent">
+          By submitting, front-desk staff confirm the patient has consented to this insurer lookup for the purpose of today's visit, in line with the clinic's PDPA policy.
+        </div>
+      </form>
+    </div>
+
+    <!-- Results -->
+    <div id="resultsArea">
+      <div class="results-empty" id="emptyState">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8a9089" stroke-width="1.4"><path d="M9 12h6M9 16h6M9 8h2"/><rect x="4" y="3" width="16" height="18" rx="2"/></svg>
+        <p>Coverage summary will appear here once you check<br>a patient's eligibility.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>Raffles Singapore Health Clinic · Eligibility Desk · Demo build — provider data shown is illustrative</footer>
+
+<script>
+/* ============================================================
+   STANDARD ELIGIBILITY SCHEMA
+   Every insurer adapter must resolve to this exact shape so the
+   UI (and any future integration) never needs to branch on
+   provider. Add a new insurer by adding one adapter below —
+   nothing else in this file needs to change.
+   ============================================================
+   {
+     status: "success" | "not_found" | "error",
+     patient: { nricMasked, name },
+     insurer: { code, name, portalUrl },
+     policy: { number, planName, statusLabel, effectiveDate, renewalDate },
+     coverage: { currency, sumInsured, utilisedAmount, remainingBalance, utilisationPct },
+     coPayment: [ { label, value } ],
+     exclusions: [ string ],
+     scannedAt: ISOString
+   }
+   ============================================================ */
+
+// ---- Adapters -------------------------------------------------
+// In production each adapter calls a small backend endpoint that
+// runs the actual portal scan (see /server/adapters in the repo
+// this file ships with) and returns data in the schema above.
+// Browsers can't scrape cross-origin portals directly, so this
+// demo calls a mock function that mirrors a real scan performed
+// against AIA's demo portal for NRIC S1234567D.
+
+const ADAPTERS = {
+  aia: {
+    name: "AIA",
+    portalUrl: "https://test-ins-app.lovable.app/",
+    async lookup(nric) {
+      await delay(900);
+      if (nric === "S1234567D") {
+        return {
+          status: "success",
+          patient: { nricMasked: "S****567D", name: "Tan Wei Ming" },
+          insurer: { code: "aia", name: "AIA HealthShield Gold Max A", portalUrl: this.portalUrl },
+          policy: {
+            number: "AIA-P-889201",
+            planName: "AIA HealthShield Gold Max A",
+            statusLabel: "Active",
+            effectiveDate: "01 Feb 2024",
+            renewalDate: "31 Jan 2027"
+          },
+          coverage: {
+            currency: "SGD",
+            sumInsured: 60000,
+            utilisedAmount: 4250,
+            remainingBalance: 55750,
+            utilisationPct: 7
+          },
+          coPayment: [
+            { label: "Panel clinic co-payment", value: "SGD 20 per visit" },
+            { label: "Non-panel co-insurance", value: "15% of eligible charges" },
+            { label: "Annual deductible", value: "SGD 500 (met)" }
+          ],
+          exclusions: [
+            "Cosmetic and aesthetic procedures",
+            "Dental treatment unless resulting from accident",
+            "Self-inflicted injuries and substance abuse",
+            "Experimental or unproven treatments"
+          ],
+          scannedAt: new Date().toISOString()
+        };
+      }
+      return { status: "not_found", insurer: { code: "aia", name: "AIA", portalUrl: this.portalUrl } };
+    }
+  },
+  greateastern: { name: "Great Eastern", portalUrl: null, async lookup(){ await delay(500); return notConnected("greateastern","Great Eastern"); } },
+  prudential:  { name: "Prudential",    portalUrl: null, async lookup(){ await delay(500); return notConnected("prudential","Prudential"); } },
+  ntuc:        { name: "NTUC Income",   portalUrl: null, async lookup(){ await delay(500); return notConnected("ntuc","NTUC Income"); } },
+};
+
+function notConnected(code, name){
+  return { status: "error", insurer: { code, name, portalUrl: null }, message: `No portal adapter configured yet for ${name}. Add one in ADAPTERS to connect it.` };
+}
+function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+// ---- Validation -------------------------------------------------
+function isValidNric(v){
+  return /^[STFG]\d{7}[A-Z]$/i.test(v.trim());
+}
+
+// ---- Form wiring -------------------------------------------------
+const form = document.getElementById('intakeForm');
+const nricInput = document.getElementById('nric');
+const nricField = document.getElementById('nricField');
+const insurerSelect = document.getElementById('insurer');
+const insurerField = document.getElementById('insurerField');
+const submitBtn = document.getElementById('submitBtn');
+const btnLabel = document.getElementById('btnLabel');
+const resultsArea = document.getElementById('resultsArea');
+
+nricInput.addEventListener('input', () => {
+  nricInput.value = nricInput.value.toUpperCase();
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const nric = nricInput.value.trim();
+  const insurerCode = insurerSelect.value;
+
+  let ok = true;
+  if (!isValidNric(nric)) { nricField.classList.add('invalid'); ok = false; } else { nricField.classList.remove('invalid'); }
+  if (!insurerCode) { insurerField.classList.add('invalid'); ok = false; } else { insurerField.classList.remove('invalid'); }
+  if (!ok) return;
+
+  submitBtn.disabled = true;
+  btnLabel.innerHTML = 'Checking<span class="spinner" style="margin-left:8px;display:inline-block;"></span>';
+
+  const adapter = ADAPTERS[insurerCode];
+  const result = await adapter.lookup(nric);
+
+  submitBtn.disabled = false;
+  btnLabel.textContent = 'Check eligibility';
+
+  renderResult(result);
+});
+
+function renderResult(r){
+  if (r.status === 'success') {
+    resultsArea.innerHTML = cardTemplate(r);
+  } else if (r.status === 'not_found') {
+    resultsArea.innerHTML = `
+      <div class="not-found">
+        <div class="section-label">No record found</div>
+        <p>No policy on file with ${r.insurer.name} for this NRIC/FIN in the connected demo dataset.</p>
+        <p>Try sample record <b>S1234567D</b>, or confirm the number with the patient.</p>
+      </div>`;
+  } else {
+    resultsArea.innerHTML = `
+      <div class="not-found">
+        <div class="section-label">Not connected</div>
+        <p>${r.message}</p>
+      </div>`;
+  }
+}
+
+function cardTemplate(r){
+  const c = r.coverage;
+  return `
+  <div class="card">
+    <div class="card-head">
+      <div class="who">
+        <div class="pname">${r.patient.name}</div>
+        <div class="pmeta">${r.patient.nricMasked} · ${r.policy.planName}</div>
+      </div>
+      <div class="status-pill active">${r.policy.statusLabel}</div>
+    </div>
+    <div class="card-body">
+      <div class="policy-line">
+        <span>Policy number<b>${r.policy.number}</b></span>
+        <span>Effective<b>${r.policy.effectiveDate}</b></span>
+        <span>Renews<b>${r.policy.renewalDate}</b></span>
+      </div>
+
+      <div class="section-label">Coverage</div>
+      <div class="coverage-figures">
+        <div class="fig"><div class="figlabel">Sum insured</div><div class="figval">$${c.sumInsured.toLocaleString()}</div></div>
+        <div class="fig"><div class="figlabel">Utilised</div><div class="figval">$${c.utilisedAmount.toLocaleString()}</div></div>
+        <div class="fig balance"><div class="figlabel">Remaining balance</div><div class="figval">$${c.remainingBalance.toLocaleString()}</div></div>
+      </div>
+      <div class="util-bar-wrap">
+        <div class="util-bar-top"><span>Annual limit utilisation</span><span>${c.utilisationPct}%</span></div>
+        <div class="util-bar"><div class="util-bar-fill" style="width:${c.utilisationPct}%;"></div></div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="section-label">Co-payment</div>
+          <ul class="kv-list">
+            ${r.coPayment.map(x => `<li><span>${x.label}</span><span>${x.value}</span></li>`).join('')}
+          </ul>
+        </div>
+        <div>
+          <div class="section-label">Exclusions</div>
+          <ul class="excl-list">
+            ${r.exclusions.map(x => `<li>${x}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="card-foot">
+      <span>Source: ${r.insurer.name} portal</span>
+      <span>Scanned ${new Date(r.scannedAt).toLocaleString('en-SG', { dateStyle:'medium', timeStyle:'short' })}</span>
+    </div>
+  </div>`;
+}
+</script>
+</body>
+</html>

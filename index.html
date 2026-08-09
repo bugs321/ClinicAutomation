@@ -182,6 +182,25 @@
   .not-found .section-label{color:var(--danger);}
   .not-found p{font-size:14px;color:#4b544f;line-height:1.6;margin:0 0 4px;}
 
+  .under-construction{
+    border:1.5px dashed var(--amber);border-radius:var(--radius);padding:36px 32px;
+    background:#FBF6EE;text-align:center;
+  }
+  .under-construction .uc-icon{
+    width:44px;height:44px;border-radius:50%;background:#F3E3CB;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 16px;
+  }
+  .under-construction .uc-tpa{
+    font-family:'Fraunces',serif;font-weight:500;font-size:19px;color:var(--ink);margin:0 0 6px;
+  }
+  .under-construction .section-label{color:var(--amber);justify-content:center;display:flex;}
+  .under-construction p{
+    font-size:14px;color:#5a5140;line-height:1.6;margin:0 auto 4px;max-width:420px;
+  }
+  .under-construction .uc-hint{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8a7d5c;margin-top:16px;
+  }
+
   .spinner{
     width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
     border-radius:50%;animation:spin .7s linear infinite;
@@ -211,7 +230,7 @@
   <div class="hero">
     <div class="eyebrow">Patient intake · Step 1 of 1</div>
     <h1>Check a patient's coverage before the consult</h1>
-    <p>Enter the patient's Singapore NRIC/FIN and select their insurance provider. We'll pull the sum insured, remaining balance, co-payment terms and exclusions from the provider's portal into one standard summary.</p>
+    <p>Enter the patient's Singapore NRIC/FIN and select their TPA. We'll pull the sum insured, remaining balance, co-payment terms and exclusions from the TPA's portal into one standard summary.</p>
   </div>
 
   <div class="grid">
@@ -227,16 +246,31 @@
           <div class="field-error">Enter a valid NRIC/FIN — 1 letter, 7 digits, 1 letter (e.g. S1234567D).</div>
         </div>
 
+        <div class="field" id="policyField">
+          <label for="policyNumber">Policy number</label>
+          <input type="text" id="policyNumber" placeholder="e.g. AIA-P-889201" autocomplete="off">
+          <div class="field-error">Enter the patient's policy number.</div>
+        </div>
+
+        <div class="field" id="nameField">
+          <label for="patientName">Patient full name <span style="font-weight:400;color:#8a9089;">(optional — required by some TPAs)</span></label>
+          <input type="text" id="patientName" placeholder="As shown on the member card" autocomplete="off">
+        </div>
+
         <div class="field" id="insurerField">
-          <label for="insurer">Insurance provider</label>
+          <label for="insurer">TPA</label>
           <select id="insurer">
-            <option value="">Select provider…</option>
-            <option value="aia">AIA — HealthShield Gold Max</option>
-            <option value="greateastern">Great Eastern — GREAT SupremeHealth</option>
-            <option value="prudential">Prudential — PRUShield</option>
-            <option value="ntuc">NTUC Income — IncomeShield</option>
+            <option value="">Select TPA…</option>
+            <option value="mhc">MHC</option>
+            <option value="alliance">Alliance</option>
+            <option value="ihp">IHP</option>
+            <option value="fullerton">Fullerton</option>
+            <option value="ixchange">iXchange</option>
+            <option value="raffles">Raffles</option>
+            <option value="adept">Adept</option>
+            <option value="demo">Demo / Sandbox (test data)</option>
           </select>
-          <div class="helper-row" id="providerHint">Each provider connects to its own eligibility portal.</div>
+          <div class="helper-row" id="providerHint">Each TPA connects to its own eligibility portal.</div>
         </div>
 
         <button type="submit" class="primary" id="submitBtn">
@@ -244,7 +278,7 @@
         </button>
 
         <div class="consent">
-          By submitting, front-desk staff confirm the patient has consented to this insurer lookup for the purpose of today's visit, in line with the clinic's PDPA policy.
+          By submitting, front-desk staff confirm the patient has consented to this TPA lookup for the purpose of today's visit, in line with the clinic's PDPA policy.
         </div>
       </form>
     </div>
@@ -264,42 +298,70 @@
 <script>
 /* ============================================================
    STANDARD ELIGIBILITY SCHEMA
-   Every insurer adapter must resolve to this exact shape so the
-   UI (and any future integration) never needs to branch on
-   provider. Add a new insurer by adding one adapter below —
-   nothing else in this file needs to change.
+   Every TPA adapter must resolve to this exact shape so the UI
+   never needs to branch on which TPA was selected — sum insured,
+   co-pay and special notes always render the same way regardless
+   of source.
    ============================================================
    {
-     status: "success" | "not_found" | "error",
+     status: "success" | "not_found" | "error" | "under_construction",
      patient: { nricMasked, name },
      insurer: { code, name, portalUrl },
      policy: { number, planName, statusLabel, effectiveDate, renewalDate },
      coverage: { currency, sumInsured, utilisedAmount, remainingBalance, utilisationPct },
-     coPayment: [ { label, value } ],
-     exclusions: [ string ],
+     coPaySummary: string,       // single human-readable line, e.g. "10% per visit — applies to specialist consults"
+     specialNotes: [ string ],   // exclusions + caps + any other remarks, unified into one list
      scannedAt: ISOString
    }
    ============================================================ */
 
 // ---- Adapters -------------------------------------------------
-// In production each adapter calls a small backend endpoint that
-// runs the actual portal scan (see /server/adapters in the repo
-// this file ships with) and returns data in the schema above.
-// Browsers can't scrape cross-origin portals directly, so this
-// demo calls a mock function that mirrors a real scan performed
-// against AIA's demo portal for NRIC S1234567D.
+// mhc and alliance are LIVE: they POST to /api/eligibility, which looks
+// up that TPA's portal URL from Credconfig.xml and runs a real Playwright
+// scan (see server/adapters/mhc.js and server/adapters/alliance.js) — this
+// only works when the site is served by `node server/index.js` (fetch
+// needs a same-origin backend; opening index.html directly as a file
+// won't reach it). The other five TPA entries are placeholders until
+// their Credconfig.xml entries and adapters are added. "demo" stays a
+// client-side mock so the UI can be previewed with no server running.
+
+async function callBackend(code, nric, policyNumber, patientName) {
+  try {
+    const res = await fetch('/api/eligibility', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tpa: code, nric, policyNumber, patientName }),
+    });
+    return await res.json();
+  } catch (err) {
+    return {
+      status: 'error',
+      insurer: { code, name: ADAPTERS[code]?.name || code, portalUrl: null },
+      message: 'Could not reach the eligibility server. Is `node server/index.js` running?',
+    };
+  }
+}
 
 const ADAPTERS = {
-  aia: {
-    name: "AIA",
+  mhc:        { name: "MHC",       async lookup(nric, policyNumber, patientName){ return callBackend('mhc', nric, policyNumber, patientName); } },
+  alliance:   { name: "Alliance",  async lookup(nric, policyNumber, patientName){ return callBackend('alliance', nric, policyNumber, patientName); } },
+  ihp:        { name: "IHP",       portalUrl: null, async lookup(){ await delay(500); return notConnected("ihp","IHP"); } },
+  fullerton:  { name: "Fullerton", portalUrl: null, async lookup(){ await delay(500); return notConnected("fullerton","Fullerton"); } },
+  ixchange:   { name: "iXchange",  portalUrl: null, async lookup(){ await delay(500); return notConnected("ixchange","iXchange"); } },
+  raffles:    { name: "Raffles",   portalUrl: null, async lookup(){ await delay(500); return notConnected("raffles","Raffles"); } },
+  adept:      { name: "Adept",     portalUrl: null, async lookup(){ await delay(500); return notConnected("adept","Adept"); } },
+
+  demo: {
+    name: "Demo / Sandbox",
     portalUrl: "https://test-ins-app.lovable.app/",
-    async lookup(nric) {
+    async lookup(nric, policyNumber) {
       await delay(900);
-      if (nric === "S1234567D") {
+      const knownPolicy = "AIA-P-889201";
+      if (nric === "S1234567D" && policyNumber.toUpperCase() === knownPolicy) {
         return {
           status: "success",
           patient: { nricMasked: "S****567D", name: "Tan Wei Ming" },
-          insurer: { code: "aia", name: "AIA HealthShield Gold Max A", portalUrl: this.portalUrl },
+          insurer: { code: "demo", name: "Demo / Sandbox TPA plan", portalUrl: this.portalUrl },
           policy: {
             number: "AIA-P-889201",
             planName: "AIA HealthShield Gold Max A",
@@ -314,30 +376,24 @@ const ADAPTERS = {
             remainingBalance: 55750,
             utilisationPct: 7
           },
-          coPayment: [
-            { label: "Panel clinic co-payment", value: "SGD 20 per visit" },
-            { label: "Non-panel co-insurance", value: "15% of eligible charges" },
-            { label: "Annual deductible", value: "SGD 500 (met)" }
-          ],
-          exclusions: [
-            "Cosmetic and aesthetic procedures",
-            "Dental treatment unless resulting from accident",
-            "Self-inflicted injuries and substance abuse",
-            "Experimental or unproven treatments"
+          coPaySummary: "SGD 20 per visit (panel) — 15% of eligible charges (non-panel)",
+          specialNotes: [
+            "Exclusion: Cosmetic and aesthetic procedures",
+            "Exclusion: Dental treatment unless resulting from accident",
+            "Exclusion: Self-inflicted injuries and substance abuse",
+            "Exclusion: Experimental or unproven treatments",
+            "Annual deductible: SGD 500 (met)"
           ],
           scannedAt: new Date().toISOString()
         };
       }
-      return { status: "not_found", insurer: { code: "aia", name: "AIA", portalUrl: this.portalUrl } };
+      return { status: "not_found", insurer: { code: "demo", name: "Demo / Sandbox", portalUrl: this.portalUrl } };
     }
   },
-  greateastern: { name: "Great Eastern", portalUrl: null, async lookup(){ await delay(500); return notConnected("greateastern","Great Eastern"); } },
-  prudential:  { name: "Prudential",    portalUrl: null, async lookup(){ await delay(500); return notConnected("prudential","Prudential"); } },
-  ntuc:        { name: "NTUC Income",   portalUrl: null, async lookup(){ await delay(500); return notConnected("ntuc","NTUC Income"); } },
 };
 
 function notConnected(code, name){
-  return { status: "error", insurer: { code, name, portalUrl: null }, message: `No portal adapter configured yet for ${name}. Add one in ADAPTERS to connect it.` };
+  return { status: "under_construction", insurer: { code, name, portalUrl: null } };
 }
 function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
 
@@ -350,6 +406,9 @@ function isValidNric(v){
 const form = document.getElementById('intakeForm');
 const nricInput = document.getElementById('nric');
 const nricField = document.getElementById('nricField');
+const policyInput = document.getElementById('policyNumber');
+const policyField = document.getElementById('policyField');
+const nameInput = document.getElementById('patientName');
 const insurerSelect = document.getElementById('insurer');
 const insurerField = document.getElementById('insurerField');
 const submitBtn = document.getElementById('submitBtn');
@@ -363,10 +422,13 @@ nricInput.addEventListener('input', () => {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const nric = nricInput.value.trim();
+  const policyNumber = policyInput.value.trim();
+  const patientName = nameInput.value.trim();
   const insurerCode = insurerSelect.value;
 
   let ok = true;
   if (!isValidNric(nric)) { nricField.classList.add('invalid'); ok = false; } else { nricField.classList.remove('invalid'); }
+  if (!policyNumber) { policyField.classList.add('invalid'); ok = false; } else { policyField.classList.remove('invalid'); }
   if (!insurerCode) { insurerField.classList.add('invalid'); ok = false; } else { insurerField.classList.remove('invalid'); }
   if (!ok) return;
 
@@ -374,7 +436,7 @@ form.addEventListener('submit', async (e) => {
   btnLabel.innerHTML = 'Checking<span class="spinner" style="margin-left:8px;display:inline-block;"></span>';
 
   const adapter = ADAPTERS[insurerCode];
-  const result = await adapter.lookup(nric);
+  const result = await adapter.lookup(nric, policyNumber, patientName);
 
   submitBtn.disabled = false;
   btnLabel.textContent = 'Check eligibility';
@@ -389,65 +451,77 @@ function renderResult(r){
     resultsArea.innerHTML = `
       <div class="not-found">
         <div class="section-label">No record found</div>
-        <p>No policy on file with ${r.insurer.name} for this NRIC/FIN in the connected demo dataset.</p>
-        <p>Try sample record <b>S1234567D</b>, or confirm the number with the patient.</p>
+        <p>No policy on file with ${r.insurer.name} matching that NRIC/FIN and policy number in the connected demo dataset.</p>
+        <p>Try sample record <b>S1234567D</b> with policy number <b>AIA-P-889201</b>, or confirm both with the patient.</p>
+      </div>`;
+  } else if (r.status === 'under_construction') {
+    resultsArea.innerHTML = `
+      <div class="under-construction">
+        <div class="uc-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C97A2B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+          </svg>
+        </div>
+        <div class="section-label">Under construction</div>
+        <div class="uc-tpa">${r.insurer.name}</div>
+        <p>This TPA's eligibility portal isn't connected yet. Sum insured, balance, co-payment and exclusions will appear here once the integration is live.</p>
+        <div class="uc-hint">Try "Demo / Sandbox" to preview how results will look.</div>
       </div>`;
   } else {
     resultsArea.innerHTML = `
       <div class="not-found">
-        <div class="section-label">Not connected</div>
-        <p>${r.message}</p>
+        <div class="section-label">Something went wrong</div>
+        <p>${r.message || 'The eligibility check failed. Please try again.'}</p>
       </div>`;
   }
 }
 
 function cardTemplate(r){
-  const c = r.coverage;
+  const c = r.coverage || {};
+  const money = (v) => (v === null || v === undefined) ? '—' : `$${Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+  const notes = r.specialNotes && r.specialNotes.length ? r.specialNotes : ['No special notes returned by this TPA.'];
+
   return `
   <div class="card">
     <div class="card-head">
       <div class="who">
-        <div class="pname">${r.patient.name}</div>
-        <div class="pmeta">${r.patient.nricMasked} · ${r.policy.planName}</div>
+        <div class="pname">${r.patient?.name || 'Patient'}</div>
+        <div class="pmeta">${r.patient?.nricMasked || ''}${r.policy?.planName ? ' · ' + r.policy.planName : ''}</div>
       </div>
-      <div class="status-pill active">${r.policy.statusLabel}</div>
+      <div class="status-pill active">${r.policy?.statusLabel || '—'}</div>
     </div>
     <div class="card-body">
       <div class="policy-line">
-        <span>Policy number<b>${r.policy.number}</b></span>
-        <span>Effective<b>${r.policy.effectiveDate}</b></span>
-        <span>Renews<b>${r.policy.renewalDate}</b></span>
+        <span>Policy number<b>${r.policy?.number || '—'}</b></span>
+        <span>Effective<b>${r.policy?.effectiveDate || '—'}</b></span>
+        <span>Renews<b>${r.policy?.renewalDate || '—'}</b></span>
+        <span>TPA<b>${r.insurer?.name || '—'}</b></span>
       </div>
 
-      <div class="section-label">Coverage</div>
+      <!-- Standard fields — same three shown the same way for every TPA -->
+      <div class="section-label">Sum insured</div>
       <div class="coverage-figures">
-        <div class="fig"><div class="figlabel">Sum insured</div><div class="figval">$${c.sumInsured.toLocaleString()}</div></div>
-        <div class="fig"><div class="figlabel">Utilised</div><div class="figval">$${c.utilisedAmount.toLocaleString()}</div></div>
-        <div class="fig balance"><div class="figlabel">Remaining balance</div><div class="figval">$${c.remainingBalance.toLocaleString()}</div></div>
+        <div class="fig"><div class="figlabel">Sum insured</div><div class="figval">${money(c.sumInsured)}</div></div>
+        <div class="fig"><div class="figlabel">Utilised</div><div class="figval">${money(c.utilisedAmount)}</div></div>
+        <div class="fig balance"><div class="figlabel">Remaining balance</div><div class="figval">${money(c.remainingBalance)}</div></div>
       </div>
+      ${c.utilisationPct !== null && c.utilisationPct !== undefined ? `
       <div class="util-bar-wrap">
         <div class="util-bar-top"><span>Annual limit utilisation</span><span>${c.utilisationPct}%</span></div>
         <div class="util-bar"><div class="util-bar-fill" style="width:${c.utilisationPct}%;"></div></div>
-      </div>
+      </div>` : '<div style="margin-bottom:16px;"></div>'}
 
-      <div class="two-col">
-        <div>
-          <div class="section-label">Co-payment</div>
-          <ul class="kv-list">
-            ${r.coPayment.map(x => `<li><span>${x.label}</span><span>${x.value}</span></li>`).join('')}
-          </ul>
-        </div>
-        <div>
-          <div class="section-label">Exclusions</div>
-          <ul class="excl-list">
-            ${r.exclusions.map(x => `<li>${x}</li>`).join('')}
-          </ul>
-        </div>
-      </div>
+      <div class="section-label">Co-pay</div>
+      <p style="font-size:14px;color:var(--ink);margin:0 0 22px;line-height:1.55;">${r.coPaySummary || 'Not specified by this TPA.'}</p>
+
+      <div class="section-label">Special notes</div>
+      <ul class="excl-list">
+        ${notes.map(x => `<li>${x}</li>`).join('')}
+      </ul>
     </div>
     <div class="card-foot">
-      <span>Source: ${r.insurer.name} portal</span>
-      <span>Scanned ${new Date(r.scannedAt).toLocaleString('en-SG', { dateStyle:'medium', timeStyle:'short' })}</span>
+      <span>Source: ${r.insurer?.name || '—'} portal</span>
+      <span>Scanned ${r.scannedAt ? new Date(r.scannedAt).toLocaleString('en-SG', { dateStyle:'medium', timeStyle:'short' }) : '—'}</span>
     </div>
   </div>`;
 }

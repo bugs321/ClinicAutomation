@@ -1,0 +1,109 @@
+/**
+ * Alliance eligibility-portal adapter.
+ *
+ * Target: the URL configured for "alliance" in Credconfig.xml (demo:
+ * https://test-ins-app.lovable.app/ — "AIA Clinic Eligibility Portal").
+ * Unlike MHC's portal, this one is a single-field lookup: NRIC/FIN only,
+ * no login, no policy number field. The clinic's policy-number input is
+ * still collected (it's a required field in the intake form) and is used
+ * here only to cross-check against the policy number the portal returns —
+ * if they don't match, that's surfaced as a "not_found" rather than
+ * silently showing someone else's policy.
+ *
+ * Requires: npm i playwright   (then: npx playwright install chromium)
+ */
+
+const { chromium } = require('playwright');
+const { getTpaCredential } = require('../credentials');
+
+async function lookup(nric, policyNumber) {
+  const cred = getTpaCredential('alliance');
+  if (!cred) {
+    return { status: 'error', insurer: { code: 'alliance', name: 'Alliance', portalUrl: null }, message: 'No URL configured for Alliance in Credconfig.xml.' };
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+
+  try {
+    await page.goto(cred.url, { waitUntil: 'networkidle' });
+
+    await page.getByPlaceholder(/S1234567D/i).fill(nric);
+    await page.getByRole('button', { name: /check eligibility/i }).click();
+
+    const found = await page
+      .getByText('SUM INSURED')
+      .waitFor({ timeout: 6000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!found) {
+      await browser.close();
+      return { status: 'not_found', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url } };
+    }
+
+    const text = await page.locator('main').innerText();
+    const result = parseResultText(text, nric, cred.url);
+    await browser.close();
+
+    if (policyNumber && result.policy.number && result.policy.number.toUpperCase() !== policyNumber.toUpperCase()) {
+      return { status: 'not_found', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url } };
+    }
+    return result;
+
+  } catch (err) {
+    await browser.close();
+    return { status: 'error', insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url }, message: err.message };
+  }
+}
+
+function parseResultText(text, nric, portalUrl) {
+  const money = (label) => {
+    const m = text.match(new RegExp(label + '\\s*\\$([\\d,]+)', 'i'));
+    return m ? Number(m[1].replace(/,/g, '')) : null;
+  };
+  const line = (label) => {
+    const m = text.match(new RegExp(label + '\\s*\\n?\\s*([^\\n]+)', 'i'));
+    return m ? m[1].trim() : null;
+  };
+  const name = text.split('\n').find(l => l && !l.includes('NRIC') && !l.includes('Check patient'))?.trim();
+  const planNameMatch = text.match(/NRIC\s*\/\s*FIN[^\n]*·\s*([^\n]+)/i);
+
+  const exclusions = text
+    .split('EXCLUSIONS')[1]
+    ?.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('For demonstration')) || [];
+
+  const panelCoPay = line('Panel clinic co-payment');
+  const nonPanel = line('Non-panel co-insurance');
+  const coPaySummary = [panelCoPay, nonPanel ? `${nonPanel} (non-panel)` : null].filter(Boolean).join(' — ');
+
+  return {
+    status: 'success',
+    patient: { nricMasked: nric.replace(/^(.)\d{4}(\d{3}.)$/, '$1****$2'), name: name || null },
+    insurer: { code: 'alliance', name: 'Alliance', portalUrl },
+    policy: {
+      number: line('Policy number'),
+      planName: planNameMatch ? planNameMatch[1].trim() : null,
+      statusLabel: text.includes('Active') ? 'Active' : 'Unknown',
+      effectiveDate: line('Effective date'),
+      renewalDate: line('Renewal date'),
+    },
+    coverage: {
+      currency: 'SGD',
+      sumInsured: money('SUM INSURED'),
+      utilisedAmount: money('UTILISED AMOUNT'),
+      remainingBalance: money('REMAINING BALANCE'),
+      utilisationPct: Number(line('Annual limit utilisation')?.replace('%', '')) || null,
+    },
+    coPaySummary: coPaySummary || null,
+    specialNotes: [
+      ...exclusions.map(e => `Exclusion: ${e}`),
+      line('Annual deductible') ? `Annual deductible: ${line('Annual deductible')}` : null,
+    ].filter(Boolean),
+    scannedAt: new Date().toISOString(),
+  };
+}
+
+module.exports = { code: 'alliance', name: 'Alliance', lookup };

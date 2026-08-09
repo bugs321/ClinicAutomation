@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Credconfig.xml
+  TPA portal credentials for the Raffles Singapore Health Clinic
+  eligibility scan adapters (see server/adapters/ and README.md).
+
+  Each <tpa> entry maps to one adapter by its "code" attribute, matching
+  the option values in index.html's TPA <select> and the keys in the
+  server/index.js adapters map.
+
+  SECURITY NOTE: this file holds plaintext credentials. Do not commit it
+  to a public repository or a shared git history. Keep it out of version
+  control (add "Credconfig.xml" to .gitignore) or load these values from
+  a secrets manager / environment variables in production instead.
+-->
+<tpaCredentials>
+
+  <tpa code="mhc">
+    <name>MHC</name>
+    <loginId>testlogin</loginId>
+    <password>password</password>
+    <url>https://test-mhc-demo.lovable.app/eligibility</url>
+  </tpa>
+
+  <tpa code="alliance">
+    <name>Alliance</name>
+    <loginId>testlogin</loginId>
+    <password>password</password>
+    <url>https://test-ins-app.lovable.app/</url>
+  </tpa>
+
+  <!-- Remaining TPAs — fill in once credentials and portal URLs are available -->
+
+  <tpa code="ihp">
+    <name>IHP</name>
+    <loginId></loginId>
+    <password></password>
+    <url></url>
+  </tpa>
+
+  <tpa code="fullerton">
+    <name>Fullerton</name>
+    <loginId></loginId>
+    <password></password>
+    <url></url>
+  </tpa>
+
+  <tpa code="ixchange">
+    <name>iXchange</name>
+    <loginId></loginId>
+    <password></password>
+    <url></url>
+  </tpa>
+
+  <tpa code="raffles">
+    <name>Raffles</name>
+    <loginId></loginId>
+    <password></password>
+    <url></url>
+  </tpa>
+
+  <tpa code="adept">
+    <name>Adept</name>
+    <loginId></loginId>
+    <password></password>
+    <url></url>
+  </tpa>
+
+</tpaCredentials>

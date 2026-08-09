@@ -326,18 +326,32 @@
 // client-side mock so the UI can be previewed with no server running.
 
 async function callBackend(code, nric, policyNumber, patientName) {
+  let res;
   try {
-    const res = await fetch('/api/eligibility', {
+    res = await fetch('/api/eligibility', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tpa: code, nric, policyNumber, patientName }),
     });
-    return await res.json();
   } catch (err) {
+    // fetch() itself threw — the request never got a response at all
+    // (server not running / not reachable / DNS-level failure).
     return {
       status: 'error',
       insurer: { code, name: ADAPTERS[code]?.name || code, portalUrl: null },
-      message: 'Could not reach the eligibility server. Is `node server/index.js` running?',
+      message: 'Could not reach the eligibility server at all (network-level failure). Confirm the Node server is deployed and running — see README.md.',
+    };
+  }
+  try {
+    return await res.json();
+  } catch (err) {
+    // Got a response, but it wasn't JSON — usually means /api/eligibility
+    // doesn't exist on this deployment (e.g. it's serving as a static
+    // site with no backend, or the route path is wrong).
+    return {
+      status: 'error',
+      insurer: { code, name: ADAPTERS[code]?.name || code, portalUrl: null },
+      message: `Server responded with HTTP ${res.status} but not valid JSON — /api/eligibility likely isn't running on this deployment. See the "Deploying to Render" section in README.md.`,
     };
   }
 }

@@ -1,0 +1,18 @@
+{
+  "name": "clinic-eligibility-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Raffles Singapore Health Clinic - TPA eligibility scan portal",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "postinstall": "playwright install --with-deps chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.46.0"
+  }
+}

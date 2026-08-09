@@ -107,6 +107,37 @@ so `fetch('/api/eligibility')` reaches it on the same origin).
   terms of use, and that any patient data in transit and at rest meets your
   clinic's data-protection obligations.
 
+## Deploying to Render
+
+Render auto-detects a folder with `index.html` at the root as a **static
+site** if there's no `package.json` — which means no Node process runs at
+all, `/api/eligibility` doesn't exist, and the front-end fails with
+"Could not reach the eligibility server." `package.json`, `Dockerfile`,
+and `render.yaml` in this repo fix that: Render will deploy it as a proper
+Docker **web service** instead.
+
+Playwright needs Chromium plus several system libraries. Render's native
+Node buildpack can't `apt-get install` those (no root during build), so
+this repo deploys via Docker using Playwright's official base image
+(`mcr.microsoft.com/playwright`), which ships Chromium pre-installed.
+
+Steps:
+
+1. Push this repo to GitHub (including `Dockerfile`, `render.yaml`,
+   `package.json` — **not** `Credconfig.xml`, see below).
+2. In Render: **New → Web Service** → connect the repo. Render should
+   read `render.yaml` and pick the Docker environment automatically; if
+   it offers a Node/native environment instead, switch the environment to
+   **Docker** manually.
+3. `Credconfig.xml` is gitignored (it holds plaintext credentials), so it
+   won't be in the deployed image unless you add it. In the Render
+   dashboard: **Environment → Secret Files** → add a file with path
+   `Credconfig.xml` and paste its contents. Render mounts it into the
+   container at deploy time without it ever touching git history.
+4. Deploy. Check the Render logs for `Eligibility API + site listening on
+   http://localhost:<port>` — if that line isn't there, the fetch will
+   keep failing regardless of what the front-end does.
+
 ## Security note on Credconfig.xml
 
 This file holds **plaintext TPA portal credentials**. Keep it out of

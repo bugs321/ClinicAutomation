@@ -44,11 +44,12 @@ async function lookup(nric, policyNumber) {
     log('clicking Check eligibility');
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
-    const sumInsuredLocator = page.getByText('SUM INSURED');
+    const sumInsuredLocator = page.getByText('SUM INSURED').first();
+    let waitError = null;
     const found = await sumInsuredLocator
       .waitFor({ timeout: 15000 })
       .then(() => true)
-      .catch(() => false);
+      .catch((err) => { waitError = err; return false; });
 
     if (!found) {
       // Capture what the page actually shows so this is diagnosable
@@ -59,6 +60,7 @@ async function lookup(nric, policyNumber) {
       ]);
       const pageSnapshot = await page.locator('main').innerText().catch(() => '(could not read page)');
       log('SUM INSURED never appeared. Field values at timeout:', { nricVal, policyVal });
+      log('waitFor error (if any):', waitError ? waitError.message : '(no error — genuinely timed out after 15s)');
       log('Page snapshot at timeout:\n', pageSnapshot);
       await browser.close();
       return {
@@ -66,6 +68,7 @@ async function lookup(nric, policyNumber) {
         insurer: { code: 'alliance', name: 'Alliance', portalUrl: cred.url },
         debug: {
           fieldsAtTimeout: { nric: nricVal, policyNumber: policyVal },
+          waitError: waitError ? waitError.message : null,
           pageTextAtTimeout: pageSnapshot.slice(0, 600),
         },
       };

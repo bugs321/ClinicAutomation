@@ -74,15 +74,15 @@ async function lookup(nric, policyNumber) {
       };
     }
 
-    // Read text from the results card only, not the whole page. The lookup
-    // form above it (still on screen) has its own "Policy number" label,
-    // and page.locator('main').innerText() would return that form's text
-    // first — so a plain first-match regex against the full page can pick
-    // up the form's (empty/irrelevant) "Policy number" line instead of the
-    // real one in the results card below it. Walk up from the SUM INSURED
-    // text we already located to find the card that actually contains the
-    // result fields, and fall back to the full page only if that fails.
-    const text = await getResultsCardText(page, sumInsuredLocator);
+    // Read the full page text. Don't try to scope this to a "results
+    // card" via DOM ancestry — this portal's layout is shallow enough
+    // that walking up from any result field's node still pulls in the
+    // intro paragraph and the lookup form above it, because there's no
+    // wrapping element that contains the results and nothing else.
+    // Instead, parseResultText() below always takes the LAST match of
+    // each label in the page, since the real results always render
+    // after the intro text and the form, in that fixed order.
+    const text = await page.locator('main').innerText();
     const result = parseResultText(text, nric, cred.url);
     await browser.close();
 
@@ -117,26 +117,26 @@ async function fillAndVerify(locator, value, log, label) {
   throw new Error(`Could not get the "${label}" field to hold "${value}" after ${delays.length} attempts — the portal kept resetting it.`);
 }
 
-/** Walks up from the SUM INSURED text node to find the results card
- * that also contains EXCLUSIONS and Policy number, so parsing reads only
- * that card's text and never the lookup form's identically-labelled
- * fields above it. Falls back to the full page if no such ancestor is
- * found within a few levels (page structure changed, etc.). */
-async function getResultsCardText(page, sumInsuredLocator) {
-  let node = sumInsuredLocator;
-  for (let i = 0; i < 6; i++) {
-    node = node.locator('xpath=..');
-    const candidate = await node.innerText().catch(() => '');
-    if (candidate.includes('EXCLUSIONS') && candidate.includes('Policy number')) {
-      return candidate;
-    }
-  }
-  return page.locator('main').innerText();
-}
-
 function parseResultText(text, nric, portalUrl) {
+  // Every lookup below takes the LAST match in the page text, not the
+  // first. The intro paragraph and the lookup form both render before
+  // the results and can incidentally contain a label's wording (e.g. the
+  // intro's plain-English sentence "...and policy number to view the sum
+  // insured..." literally contains the substring "policy number"; the
+  // form has its own bare "Policy number" label with no value after it).
+  // The real results always render last on the page, so the last match
+  // of any label is the reliable one regardless of what precedes it.
+  const lastMatch = (regex) => {
+    let m;
+    let last = null;
+    while ((m = regex.exec(text)) !== null) {
+      last = m;
+      if (m.index === regex.lastIndex) regex.lastIndex++; // avoid infinite loop on zero-width match
+    }
+    return last;
+  };
   const money = (label) => {
-    const m = text.match(new RegExp(label + '\\s*\\$([\\d,]+)', 'i'));
+    const m = lastMatch(new RegExp(label + '\\s*\\$([\\d,]+)', 'gi'));
     return m ? Number(m[1].replace(/,/g, '')) : null;
   };
   const knownLabels = [
@@ -145,24 +145,55 @@ function parseResultText(text, nric, portalUrl) {
     'SUM INSURED', 'UTILISED AMOUNT', 'REMAINING BALANCE', 'COVERAGE', 'CO-PAYMENT', 'EXCLUSIONS',
   ];
   const line = (label) => {
-    const m = text.match(new RegExp(label + '\\s*\\n?\\s*([^\\n]+)', 'i'));
+    const m = lastMatch(new RegExp(label + '\\s*\\n?\\s*([^\\n]+)', 'gi'));
     if (!m) return null;
     const value = m[1].trim();
     // Guard: if the "value" we captured is actually another field's label
-    // (e.g. we matched a bare label with no value on the next line, so the
-    // regex fell through to whatever heading came after it), treat it as
-    // not found rather than returning a wrong value.
+    // (bare label with no value on the next line, so the regex fell
+    // through to whatever heading came after it), treat it as not found
+    // rather than returning a wrong value.
     if (knownLabels.some(l => value.toLowerCase() === l.toLowerCase())) return null;
     return value;
   };
-  const name = text.split('\n').find(l => l && !l.includes('NRIC') && !l.includes('Check patient'))?.trim();
+  // Policy number gets one more guard on top of lastMatch/knownLabels:
+  // reject anything that isn't shaped like a policy number, so a stray
+  // sentence fragment (e.g. from the intro paragraph) can never pass
+  // through even if it happens to survive the checks above.
+  const policyNumberLine = () => {
+    const value = line('Policy number');
+    return value && /^[A-Z0-9][A-Z0-9\-\/]{3,}$/i.test(value) ? value : null;
+  };
+  // Patient name: find the line right before the "NRIC / FIN <masked> ·
+  // <plan>" results header, rather than "first line that isn't NRIC-ish"
+  // — that first-match approach picked up the lookup form's own card
+  // heading ("Policy lookup") on records where the intro paragraph also
+  // happens to avoid the word "NRIC".
+  const lines = text.split('\n').map(l => l.trim());
+  const nricFinIdx = lines.findIndex(l => /^NRIC\s*\/\s*FIN\s/i.test(l));
+  let name = null;
+  if (nricFinIdx > 0) {
+    for (let i = nricFinIdx - 1; i >= 0; i--) {
+      if (lines[i]) { name = lines[i]; break; }
+    }
+  }
   const planNameMatch = text.match(/NRIC\s*\/\s*FIN[^\n]*·\s*([^\n]+)/i);
 
-  const exclusions = text
-    .split('EXCLUSIONS')[1]
-    ?.split('\n')
+  // Exclusions run from "EXCLUSIONS" up to whichever comes first: a
+  // "SPECIAL REMARKS" section (some policies have one, some don't) or the
+  // demo disclaimer footer. Without that stop condition, a record with
+  // special remarks had them folded into the exclusions list and
+  // mislabelled as "Exclusion: ...".
+  const afterExclusions = text.split('EXCLUSIONS')[1] || '';
+  const exclusions = afterExclusions
+    .split(/SPECIAL REMARKS|For demonstration/i)[0]
+    .split('\n')
     .map(l => l.trim())
-    .filter(l => l && !l.startsWith('For demonstration')) || [];
+    .filter(Boolean);
+
+  const afterRemarks = text.split('SPECIAL REMARKS')[1];
+  const specialRemarks = afterRemarks
+    ? afterRemarks.split(/For demonstration/i)[0].split('\n').map(l => l.trim()).filter(Boolean)
+    : [];
 
   const panelCoPay = line('Panel clinic co-payment');
   const nonPanel = line('Non-panel co-insurance');
@@ -173,7 +204,7 @@ function parseResultText(text, nric, portalUrl) {
     patient: { nricMasked: nric.replace(/^(.)\d{4}(\d{3}.)$/, '$1****$2'), name: name || null },
     insurer: { code: 'alliance', name: 'Alliance', portalUrl },
     policy: {
-      number: line('Policy number'),
+      number: policyNumberLine(),
       planName: planNameMatch ? planNameMatch[1].trim() : null,
       statusLabel: text.includes('Active') ? 'Active' : 'Unknown',
       effectiveDate: line('Effective date'),
@@ -189,6 +220,7 @@ function parseResultText(text, nric, portalUrl) {
     coPaySummary: coPaySummary || null,
     specialNotes: [
       ...exclusions.map(e => `Exclusion: ${e}`),
+      ...specialRemarks.map(r => `Remark: ${r}`),
       line('Annual deductible') ? `Annual deductible: ${line('Annual deductible')}` : null,
     ].filter(Boolean),
     scannedAt: new Date().toISOString(),

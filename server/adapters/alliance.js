@@ -44,8 +44,8 @@ async function lookup(nric, policyNumber) {
     log('clicking Check eligibility');
     await page.getByRole('button', { name: /check eligibility/i }).click();
 
-    const found = await page
-      .getByText('SUM INSURED')
+    const sumInsuredLocator = page.getByText('SUM INSURED');
+    const found = await sumInsuredLocator
       .waitFor({ timeout: 15000 })
       .then(() => true)
       .catch(() => false);
@@ -71,7 +71,15 @@ async function lookup(nric, policyNumber) {
       };
     }
 
-    const text = await page.locator('main').innerText();
+    // Read text from the results card only, not the whole page. The lookup
+    // form above it (still on screen) has its own "Policy number" label,
+    // and page.locator('main').innerText() would return that form's text
+    // first — so a plain first-match regex against the full page can pick
+    // up the form's (empty/irrelevant) "Policy number" line instead of the
+    // real one in the results card below it. Walk up from the SUM INSURED
+    // text we already located to find the card that actually contains the
+    // result fields, and fall back to the full page only if that fails.
+    const text = await getResultsCardText(page, sumInsuredLocator);
     const result = parseResultText(text, nric, cred.url);
     await browser.close();
 
@@ -106,14 +114,43 @@ async function fillAndVerify(locator, value, log, label) {
   throw new Error(`Could not get the "${label}" field to hold "${value}" after ${delays.length} attempts — the portal kept resetting it.`);
 }
 
+/** Walks up from the SUM INSURED text node to find the results card
+ * that also contains EXCLUSIONS and Policy number, so parsing reads only
+ * that card's text and never the lookup form's identically-labelled
+ * fields above it. Falls back to the full page if no such ancestor is
+ * found within a few levels (page structure changed, etc.). */
+async function getResultsCardText(page, sumInsuredLocator) {
+  let node = sumInsuredLocator;
+  for (let i = 0; i < 6; i++) {
+    node = node.locator('xpath=..');
+    const candidate = await node.innerText().catch(() => '');
+    if (candidate.includes('EXCLUSIONS') && candidate.includes('Policy number')) {
+      return candidate;
+    }
+  }
+  return page.locator('main').innerText();
+}
+
 function parseResultText(text, nric, portalUrl) {
   const money = (label) => {
     const m = text.match(new RegExp(label + '\\s*\\$([\\d,]+)', 'i'));
     return m ? Number(m[1].replace(/,/g, '')) : null;
   };
+  const knownLabels = [
+    'Policy number', 'Effective date', 'Renewal date', 'Panel clinic co-payment',
+    'Non-panel co-insurance', 'Annual deductible', 'Annual limit utilisation',
+    'SUM INSURED', 'UTILISED AMOUNT', 'REMAINING BALANCE', 'COVERAGE', 'CO-PAYMENT', 'EXCLUSIONS',
+  ];
   const line = (label) => {
     const m = text.match(new RegExp(label + '\\s*\\n?\\s*([^\\n]+)', 'i'));
-    return m ? m[1].trim() : null;
+    if (!m) return null;
+    const value = m[1].trim();
+    // Guard: if the "value" we captured is actually another field's label
+    // (e.g. we matched a bare label with no value on the next line, so the
+    // regex fell through to whatever heading came after it), treat it as
+    // not found rather than returning a wrong value.
+    if (knownLabels.some(l => value.toLowerCase() === l.toLowerCase())) return null;
+    return value;
   };
   const name = text.split('\n').find(l => l && !l.includes('NRIC') && !l.includes('Check patient'))?.trim();
   const planNameMatch = text.match(/NRIC\s*\/\s*FIN[^\n]*·\s*([^\n]+)/i);
